@@ -6,7 +6,7 @@ A static, mobile-first scorekeeper for **HK Style Taiwanese Mahjong** (港式台
 
 Open `index.html` in a browser, or serve the folder with any static file server.
 
-or check https://mj.mayu54.con
+or check https://mj.mayu54.com
 
 ## Features
 

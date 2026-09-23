@@ -14,6 +14,7 @@
     <header class="app-header" id="app-header">
       <button class="header-back" id="btn-back-home" type="button">返回標題</button>
       <h1>Himu Sex Boys Club 港式台牌</h1>
+      <span class="header-back-spacer" aria-hidden="true"></span>
     </header>
 
     <section id="screen-home" class="screen">
@@ -60,7 +61,7 @@
           <button class="btn ghost" id="btn-add-emoji" type="button">用頭像加入</button>
           <button class="btn ghost" id="btn-add-photo" type="button">拍照／相簿加入</button>
         </div>
-        <input id="photo-input" class="hidden-file" type="file" accept="image/*" capture="environment" />
+        <input id="photo-input" class="hidden-file" type="file" accept="image/*" />
         <div class="player-list" id="setup-players"></div>
       </div>
 
@@ -239,7 +240,7 @@
           <button class="btn ghost" id="manage-add-emoji" type="button">用頭像加入</button>
           <button class="btn ghost" id="manage-add-photo" type="button">相片加入</button>
         </div>
-        <input id="manage-photo" class="hidden-file" type="file" accept="image/*" capture="environment" />
+        <input id="manage-photo" class="hidden-file" type="file" accept="image/*" />
         <div class="player-list" id="manage-players"></div>
         <p class="hint">點座位換成庫裡的人。分數跟玩家走。</p>
         <div id="manage-seats"></div>

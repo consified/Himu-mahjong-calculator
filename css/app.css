@@ -42,37 +42,60 @@ select {
 .app-header {
   position: sticky;
   top: 0;
-  z-index: 5;
-  padding: calc(14px + env(safe-area-inset-top)) 16px 10px;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: calc(10px + env(safe-area-inset-top)) 10px 10px;
   background: linear-gradient(180deg, #0f1c14 70%, transparent);
-  text-align: center;
+  isolation: isolate;
 }
 
 .header-back {
-  position: absolute;
-  left: 10px;
-  top: calc(10px + env(safe-area-inset-top));
   appearance: none;
   border: 1px solid var(--line);
-  background: transparent;
+  background: #0f1c14;
   color: var(--gold);
   font-size: 0.72rem;
   font-weight: 700;
-  padding: 6px 8px;
+  padding: 8px 10px;
   border-radius: 999px;
-  z-index: 1;
+  white-space: nowrap;
+  touch-action: manipulation;
+  z-index: 2;
+}
+
+.header-back-spacer {
+  width: 1px;
+  height: 1px;
+  visibility: hidden;
 }
 
 .app-header h1 {
-  margin: 0 72px;
-  font-size: 1.05rem;
+  margin: 0;
+  font-size: 0.95rem;
   letter-spacing: 0.04em;
   color: var(--gold);
   font-weight: 700;
+  text-align: center;
+  min-width: 0;
 }
 
 .app-header.hidden {
   display: none;
+}
+
+html[data-screen="screen-home"] #screen-setup,
+html[data-screen="screen-home"] #screen-table,
+html[data-screen="screen-home"] #screen-log,
+html[data-screen="screen-home"] #screen-stats,
+html[data-screen="screen-home"] .tab-bar {
+  display: none !important;
+}
+
+html[data-screen="screen-home"] #screen-home {
+  display: block !important;
 }
 
 a.btn {

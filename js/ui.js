@@ -21,6 +21,7 @@ const ui = {
   pendingDealerSeat: null,
   logView: "full",
   logDesc: true,
+  screen: "screen-home",
 };
 
 function $(id) {
@@ -28,8 +29,11 @@ function $(id) {
 }
 
 function showScreen(id) {
+  ui.screen = id;
+  document.documentElement.dataset.screen = id;
   document.querySelectorAll(".screen").forEach((el) => el.classList.remove("active"));
-  $(id).classList.add("active");
+  const target = $(id);
+  if (target) target.classList.add("active");
   const inPlay = id === "screen-table" || id === "screen-log" || id === "screen-stats";
   $("tab-bar").classList.toggle("visible", inPlay);
   $("screen-table").classList.toggle("with-tabs", inPlay);
@@ -40,6 +44,16 @@ function showScreen(id) {
   $("tab-stats").classList.toggle("active", id === "screen-stats");
   const header = $("app-header");
   if (header) header.classList.toggle("hidden", id === "screen-home");
+  if (id === "screen-home") window.scrollTo(0, 0);
+}
+
+function goHome(ev) {
+  if (ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+  }
+  document.querySelectorAll(".modal.active").forEach((el) => el.classList.remove("active"));
+  showScreen("screen-home");
 }
 
 function openModal(id) {
@@ -1122,7 +1136,7 @@ function boot() {
       renderSetupSeats();
     }
   };
-  $("btn-back-home").onclick = () => showScreen("screen-home");
+  $("btn-back-home").onclick = goHome;
 
   showScreen("screen-home");
 }

@@ -12,6 +12,7 @@ const ui = {
   winnerSeat: null,
   discarderSeat: null,
   extraWinnerSeats: [],
+  multiRon: false,
   faceFans: {},
   specialReceive: false,
   specialPerDoor: true,
@@ -369,12 +370,13 @@ function renderStats() {
     ? `已完成 ${view.winds} 圈。頭銜按目前食糊／自摸／出銃／連莊／賞罰統計。`
     : `已完成 ${view.winds}／4 圈。打完東南西北一個全圈之後先會賦予頭銜。`;
   if (!view.ranked.length) {
-    $("stats-list").innerHTML = `<div class="card"><p class="hint">尚未有入座玩家。</p></div>`;
+    $("stats-list").innerHTML = `<div class="card"><p class="hint">尚未有玩家。</p></div>`;
     return;
   }
   $("stats-list").innerHTML = view.ranked
     .map((row) => {
       const id = row.player.id;
+      const bench = row.seated ? "" : `<span class="stat-pill">未上桌</span>`;
       const pills = (view.titles[id] || [])
         .slice()
         .sort((a, b) => Stats.TITLE_ORDER.indexOf(a) - Stats.TITLE_ORDER.indexOf(b))
@@ -388,7 +390,7 @@ function renderStats() {
         <div class="stat-head">
           ${avatarHtml(row.player)}
           <div class="stat-name">${esc(row.player.name)}</div>
-          <div class="stat-titles">${pills}</div>
+          <div class="stat-titles">${bench}${pills}</div>
         </div>
         <div class="stat-grid">
           <div class="stat-cell"><div class="num">${row.hu}${crown("hu")}</div><div class="lbl">食糊</div></div>
@@ -597,21 +599,29 @@ function bindWinChoices() {
     ui.extraWinnerSeats = [];
     refreshWinModal();
   };
+  $("win-multi-toggle").onchange = () => {
+    ui.multiRon = $("win-multi-toggle").checked;
+    if (!ui.multiRon) ui.extraWinnerSeats = [];
+    refreshWinModal();
+  };
   $("win-discarder").onclick = (ev) => {
     const b = ev.target.closest("[data-seat]");
     if (!b) return;
-    ui.discarderSeat = Number(b.dataset.seat);
-    ui.extraWinnerSeats = ui.extraWinnerSeats.filter((s) => s !== ui.discarderSeat);
-    refreshWinModal();
-  };
-  $("win-multi").onclick = (ev) => {
-    const b = ev.target.closest("[data-multi-seat]");
-    if (!b) return;
-    const seat = Number(b.dataset.multiSeat);
-    const i = ui.extraWinnerSeats.indexOf(seat);
-    if (i >= 0) ui.extraWinnerSeats.splice(i, 1);
-    else if (allWinnerSeats().length < 3) ui.extraWinnerSeats.push(seat);
-    if (ui.faceFans[seat] == null) ui.faceFans[seat] = 5;
+    const seat = Number(b.dataset.seat);
+    if (!ui.multiRon) {
+      ui.discarderSeat = seat;
+      ui.extraWinnerSeats = [];
+    } else if (ui.discarderSeat == null || seat === ui.discarderSeat) {
+      ui.discarderSeat = seat;
+      ui.extraWinnerSeats = ui.extraWinnerSeats.filter((s) => s !== seat);
+    } else {
+      const i = ui.extraWinnerSeats.indexOf(seat);
+      if (i >= 0) ui.extraWinnerSeats.splice(i, 1);
+      else if (allWinnerSeats().length < 3) {
+        ui.extraWinnerSeats.push(seat);
+        if (ui.faceFans[seat] == null) ui.faceFans[seat] = 5;
+      }
+    }
     refreshWinModal();
   };
   $("special-pay").onclick = () => {
@@ -645,28 +655,27 @@ function bindWinChoices() {
   };
 }
 
-function renderWinMulti() {
-  const box = $("win-multi");
-  if (ui.winMode !== "hu") {
-    box.innerHTML = "";
-    return;
+function renderDiscarderChoices() {
+  const g = State.game;
+  const hint = $("win-discarder-hint");
+  if (hint) {
+    hint.textContent = ui.multiRon
+      ? "先揀放炮者，再點其他同時食糊嘅人。"
+      : "揀放炮者。";
   }
-  if (ui.discarderSeat == null) {
-    box.innerHTML = `<p class="hint">先揀放炮者，再加其他食糊玩家。</p>`;
-    return;
-  }
-  const others = [0, 1, 2, 3].filter((s) => s !== ui.winnerSeat && s !== ui.discarderSeat);
-  if (!others.length) {
-    box.innerHTML = `<p class="hint">冇其他人可以加。</p>`;
-    return;
-  }
-  box.innerHTML = others
+  $("win-discarder").innerHTML = [0, 1, 2, 3]
+    .filter((s) => s !== ui.winnerSeat)
     .map((seat) => {
-      const p = State.player(State.game.seats[seat]);
-      const on = ui.extraWinnerSeats.includes(seat);
-      return `<button type="button" class="choice ${on ? "selected" : ""}" data-multi-seat="${seat}">${avatarHtml(
-        p
-      )} ${esc(p?.name || "")} · ${WIND[seat]}</button>`;
+      const p = State.player(g.seats[seat]);
+      const isD = ui.discarderSeat === seat;
+      const isE = ui.multiRon && ui.extraWinnerSeats.includes(seat);
+      let cls = "choice";
+      if (isD) cls += " selected";
+      if (isE) cls += " extra-hu";
+      const badge = isD ? " · 放炮" : isE ? " · 食糊" : "";
+      return `<button type="button" class="${cls}" data-seat="${seat}">${avatarHtml(p)} ${esc(
+        p?.name || ""
+      )} · ${WIND[seat]}${badge}</button>`;
     })
     .join("");
 }
@@ -723,7 +732,11 @@ function refreshWinModal() {
   $("win-discarder-wrap").style.display = isHu ? "" : "none";
   $("win-special-wrap").style.display = isSpecial ? "" : "none";
   $("win-faces").style.display = isSpecial ? "none" : "";
-  if (isHu) seatChoices("win-discarder", ui.discarderSeat, ui.winnerSeat);
+  if (isHu) {
+    const tog = $("win-multi-toggle");
+    if (tog) tog.checked = !!ui.multiRon;
+    renderDiscarderChoices();
+  }
   if (isSpecial) {
     $("special-pay").className = ui.specialReceive ? "btn ghost" : "btn";
     $("special-recv").className = ui.specialReceive ? "btn" : "btn ghost";
@@ -738,10 +751,7 @@ function refreshWinModal() {
     const each = Scoring.handAmount(fans, State.game.settings.taiValue, State.game.settings.keepExact);
     $("special-di-hint").textContent = `${ui.specialDi || 0} 底 = ${fans} 番　每人 ${formatMoney(each)}`;
   }
-  if (!isSpecial) {
-    renderWinMulti();
-    renderWinFaces();
-  }
+  if (!isSpecial) renderWinFaces();
   renderWinPreview();
 }
 
@@ -751,6 +761,7 @@ function openWinFromSeat(seat) {
   ui.winMode = "zimo";
   ui.discarderSeat = null;
   ui.extraWinnerSeats = [];
+  ui.multiRon = false;
   ui.faceFans = { [seat]: 5 };
   ui.specialReceive = false;
   ui.specialPerDoor = true;

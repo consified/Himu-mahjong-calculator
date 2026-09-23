@@ -8,7 +8,7 @@
     />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>Himu Sex Boys Club 港式台牌</title>
-    <link rel="stylesheet" href="css/app.css?v=20260923b" />
+    <link rel="stylesheet" href="css/app.css?v=20260923c" />
   </head>
   <body>
     <header class="app-header" id="app-header">
@@ -18,6 +18,7 @@
 
     <section id="screen-home" class="screen">
       <div class="home-hero">
+        <img class="home-logo" src="title.jfif" alt="Himu Sex Boys Club 港式台牌" />
         <p class="home-kicker">Himu Sex Boys Club</p>
         <h2 class="home-title">港式台牌</h2>
         <p class="home-sub">HK Style Taiwanese Mahjong</p>
@@ -144,10 +145,16 @@
           <button class="btn ghost" id="win-mode-special" type="button">特別賞罰</button>
         </div>
         <div id="win-discarder-wrap" style="display: none">
-          <p class="hint">放炮者</p>
+          <div class="win-discarder-head">
+            <p class="hint">放炮者</p>
+            <label class="switch">
+              <span>一炮多響</span>
+              <input id="win-multi-toggle" type="checkbox" />
+              <span class="switch-ui"></span>
+            </label>
+          </div>
+          <p class="hint" id="win-discarder-hint">揀放炮者。</p>
           <div class="choice-grid" id="win-discarder"></div>
-          <p class="hint">一炮多響（最多三響，連同已選贏家）</p>
-          <div class="choice-grid" id="win-multi"></div>
         </div>
         <div id="win-special-wrap" style="display: none">
           <p class="hint">收／賠</p>
@@ -247,10 +254,10 @@
       </div>
     </div>
 
-    <script src="js/animals.js?v=20260923b"></script>
-    <script src="js/scoring.js?v=20260923b"></script>
-    <script src="js/stats.js?v=20260923b"></script>
-    <script src="js/state.js?v=20260923b"></script>
-    <script src="js/ui.js?v=20260923b"></script>
+    <script src="js/animals.js?v=20260923c"></script>
+    <script src="js/scoring.js?v=20260923c"></script>
+    <script src="js/stats.js?v=20260923c"></script>
+    <script src="js/state.js?v=20260923c"></script>
+    <script src="js/ui.js?v=20260923c"></script>
   </body>
 </html>

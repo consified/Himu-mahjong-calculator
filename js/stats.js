@@ -87,20 +87,35 @@ function formatStatDi(n) {
   return String(v);
 }
 
-function seatedStatRows(game) {
-  return (game.seats || [])
-    .map((id) => game.players.find((p) => p.id === id))
-    .filter(Boolean)
-    .map((p) => {
-      const st = (game.playerStats && game.playerStats[p.id]) || emptyPlayerStat();
-      const wins = st.hu + st.zimo;
-      return {
-        player: p,
-        ...st,
-        wins,
-        avgFan: st.fanHands ? st.fanSum / st.fanHands : null,
-      };
-    });
+function playerStatRows(game) {
+  const seatedIds = (game.seats || []).filter(Boolean);
+  const seatedSet = new Set(seatedIds);
+  const ordered = [];
+  const seen = new Set();
+  seatedIds.forEach((id) => {
+    const p = (game.players || []).find((x) => x.id === id);
+    if (p && !seen.has(p.id)) {
+      seen.add(p.id);
+      ordered.push(p);
+    }
+  });
+  (game.players || []).forEach((p) => {
+    if (!seen.has(p.id)) {
+      seen.add(p.id);
+      ordered.push(p);
+    }
+  });
+  return ordered.map((p) => {
+    const st = (game.playerStats && game.playerStats[p.id]) || emptyPlayerStat();
+    const wins = st.hu + st.zimo;
+    return {
+      player: p,
+      seated: seatedSet.has(p.id),
+      ...st,
+      wins,
+      avgFan: st.fanHands ? st.fanSum / st.fanHands : null,
+    };
+  });
 }
 
 function maxIds(rows, key, minValue) {
@@ -178,7 +193,7 @@ const TITLE_ORDER = [
 function buildStatsView(game) {
   const winds = Number(game.windsCompleted) || 0;
   const unlocked = winds >= 4;
-  const rows = seatedStatRows(game);
+  const rows = playerStatRows(game);
   const titles = assignTitles(rows, unlocked);
   const ranked = rows.slice().sort((a, b) => b.hu - a.hu || b.zimo - a.zimo || b.wins - a.wins);
   const crown = {

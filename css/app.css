@@ -117,6 +117,15 @@ a.btn {
   padding: calc(24px + env(safe-area-inset-top)) 8px 40px;
 }
 
+.home-logo {
+  width: min(72vw, 280px);
+  height: auto;
+  border-radius: 20px;
+  margin-bottom: 18px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
 .home-kicker {
   margin: 0;
   color: var(--gold);
@@ -554,9 +563,65 @@ select {
   text-align: left;
 }
 
-.choice.selected {
-  border-color: var(--gold);
-  color: var(--gold);
+.choice.extra-hu {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.win-discarder-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.win-discarder-head .hint {
+  margin: 0;
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.switch-ui {
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: #3a4a40;
+  position: relative;
+  flex: none;
+}
+
+.switch-ui::after {
+  content: "";
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  top: 2px;
+  left: 2px;
+  transition: left 0.15s ease;
+}
+
+.switch input:checked + .switch-ui {
+  background: var(--ok);
+}
+
+.switch input:checked + .switch-ui::after {
+  left: 20px;
 }
 
 .preview {

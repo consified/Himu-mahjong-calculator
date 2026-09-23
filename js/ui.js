@@ -38,6 +38,8 @@ function showScreen(id) {
   $("tab-table").classList.toggle("active", id === "screen-table");
   $("tab-log").classList.toggle("active", id === "screen-log");
   $("tab-stats").classList.toggle("active", id === "screen-stats");
+  const header = $("app-header");
+  if (header) header.classList.toggle("hidden", id === "screen-home");
 }
 
 function openModal(id) {
@@ -1110,14 +1112,19 @@ function boot() {
     goToFreshSetup();
   };
 
-  if (State.hasActiveGame()) {
-    showScreen("screen-table");
-    renderTable();
-  } else {
-    showScreen("screen-setup");
-    renderSetupPlayers();
-    renderSetupSeats();
-  }
+  $("btn-enter-game").onclick = () => {
+    if (State.hasActiveGame()) {
+      showScreen("screen-table");
+      renderTable();
+    } else {
+      showScreen("screen-setup");
+      renderSetupPlayers();
+      renderSetupSeats();
+    }
+  };
+  $("btn-back-home").onclick = () => showScreen("screen-home");
+
+  showScreen("screen-home");
 }
 
 boot();

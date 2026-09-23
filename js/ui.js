@@ -56,6 +56,22 @@ function goHome(ev) {
   showScreen("screen-home");
 }
 
+document.addEventListener(
+  "click",
+  function (ev) {
+    const hit = ev.target.closest("#btn-back-home");
+    if (!hit) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    try {
+      goHome();
+    } catch (err) {
+      window.location.href = "./?home=1";
+    }
+  },
+  true
+);
+
 function openModal(id) {
   $(id).classList.add("active");
 }
@@ -1136,7 +1152,6 @@ function boot() {
       renderSetupSeats();
     }
   };
-  $("btn-back-home").onclick = goHome;
 
   showScreen("screen-home");
 }

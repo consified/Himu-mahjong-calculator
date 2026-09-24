@@ -189,7 +189,7 @@ a.btn {
 }
 
 .screen.with-tabs {
-  padding-bottom: 96px;
+  padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
 }
 
 .card {
@@ -262,8 +262,14 @@ input[type="number"] {
   color: #2a0c0c;
 }
 
+.btn.ok {
+  background: var(--ok);
+  color: #0d2416;
+}
+
 #btn-result {
   margin-top: 8px;
+  margin-bottom: 4px;
 }
 
 .btn:disabled {
@@ -272,7 +278,7 @@ input[type="number"] {
 
 .table-hint {
   text-align: center;
-  margin: -6px 0 8px;
+  margin: 4px 0 6px;
 }
 
 #btn-set-dealer {
@@ -283,7 +289,11 @@ input[type="number"] {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: 8px;
+}
+
+#screen-table .btn {
+  padding: 10px 12px;
 }
 
 .btn-row.triple {
@@ -353,30 +363,30 @@ select {
 
 .table-wrap {
   display: grid;
-  grid-template-columns: minmax(96px, 1fr) minmax(110px, 1.15fr) minmax(96px, 1fr);
-  grid-template-rows: auto minmax(92px, 1fr) auto;
+  grid-template-columns: minmax(84px, 1fr) minmax(96px, 1.15fr) minmax(84px, 1fr);
+  grid-template-rows: auto minmax(72px, 1fr) auto;
   align-items: center;
   justify-items: center;
-  gap: 8px 6px;
-  min-height: 420px;
-  aspect-ratio: 1 / 1.12;
-  max-height: 520px;
-  margin: 8px 0 14px;
-  padding: 10px 8px;
+  gap: 6px 4px;
+  min-height: 0;
+  height: min(42dvh, 340px);
+  max-height: calc(100dvh - 22rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  margin: 4px 0 8px;
+  padding: 8px 6px;
   background: radial-gradient(circle, var(--felt) 0%, var(--felt-2) 70%);
-  border: 6px solid #6b5424;
-  border-radius: 24px;
+  border: 5px solid #6b5424;
+  border-radius: 20px;
   box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.35), var(--shadow);
 }
 
 .seat {
   position: relative;
   width: 100%;
-  max-width: 128px;
+  max-width: 118px;
   background: rgba(10, 22, 16, 0.88);
   border: 1px solid var(--line);
   border-radius: 14px;
-  padding: 8px 6px;
+  padding: 6px 4px;
   text-align: center;
   color: inherit;
   appearance: none;
@@ -405,9 +415,9 @@ select {
 }
 
 .seat .avatar {
-  width: 40px;
-  height: 40px;
-  font-size: 1.2rem;
+  width: 34px;
+  height: 34px;
+  font-size: 1.05rem;
 }
 
 .seat-head {

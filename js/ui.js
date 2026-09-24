@@ -829,10 +829,10 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-async function shareJpegBlob(blob, filename, title, text) {
+async function shareJpegBlob(blob, filename) {
   const file = new File([blob], filename, { type: "image/jpeg" });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    await navigator.share({ files: [file], title, text });
+    await navigator.share({ files: [file] });
     return;
   }
   downloadBlob(blob, filename);
@@ -844,12 +844,7 @@ async function shareStatCard(row, view) {
   try {
     const blob = await renderStatShareJpeg(row, view);
     const safe = String(row.player.name || "player").replace(/[\\/:*?"<>|]/g, "_");
-    await shareJpegBlob(
-      blob,
-      `${safe}-統計.jpg`,
-      `${row.player.name} 統計`,
-      `Himu Sex Boys Club 港式台牌 · ${row.player.name}`
-    );
+    await shareJpegBlob(blob, `${safe}-統計.jpg`);
   } catch (err) {
     if (err && err.name === "AbortError") return;
     try {
@@ -1325,12 +1320,7 @@ async function shareResultPage() {
   const names = ["戰況", "排行榜", "統計", "找數"];
   try {
     const blob = await renderResultShareJpeg(ui.resultPage);
-    await shareJpegBlob(
-      blob,
-      `總賽果-${names[ui.resultPage] || "分享"}.jpg`,
-      `總賽果 · ${names[ui.resultPage]}`,
-      "Himu Sex Boys Club 港式台牌"
-    );
+    await shareJpegBlob(blob, `總賽果-${names[ui.resultPage] || "分享"}.jpg`);
   } catch (err) {
     if (err && err.name === "AbortError") return;
     try {

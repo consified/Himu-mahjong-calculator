@@ -15,6 +15,7 @@ const ui = {
   multiRon: false,
   faceFans: {},
   specialReceive: false,
+  specialKind: "追三/四",
   specialPerDoor: true,
   specialTargets: [],
   specialDi: 1,
@@ -22,8 +23,24 @@ const ui = {
   pendingDealerSeat: null,
   logView: "full",
   logDesc: true,
+  statPlayerId: null,
+  resultPage: 0,
   screen: "screen-home",
 };
+
+const SPECIAL_KINDS = {
+  recv: ["圍骰", "暗槓", "花草", "其他"],
+  pay: ["追三/四", "123順子", "其他"],
+};
+
+function specialKindList() {
+  return ui.specialReceive ? SPECIAL_KINDS.recv : SPECIAL_KINDS.pay;
+}
+
+function ensureSpecialKind() {
+  const list = specialKindList();
+  if (!list.includes(ui.specialKind)) ui.specialKind = list[0];
+}
 
 function $(id) {
   return document.getElementById(id);
@@ -260,10 +277,11 @@ function eventTags(row, id) {
   if (row.type === "draw" && row.dealerId === id) out.push("流局");
   if (row.type === "special") {
     const di = Stats.formatStatDi(row.di != null ? row.di : row.faceFan);
+    const kind = row.kind ? `${row.kind} ` : "";
     const isWin = (row.payments || []).some((p) => p.winnerId === id);
     const isLose = (row.payments || []).some((p) => p.loserId === id);
-    if (isWin) out.push(`獎${di}底`);
-    if (isLose) out.push(`罰${di}底`);
+    if (isWin) out.push(`${kind}獎${di}底`);
+    if (isLose) out.push(`${kind}罰${di}底`);
   }
   if (row.type === "win") {
     const won = (row.payments || []).some((p) => p.winnerId === id);
@@ -364,11 +382,64 @@ function renderLog() {
   });
 }
 
+function statTitlePills(view, row) {
+  const id = row.player.id;
+  const bench = row.seated ? "" : `<span class="stat-pill">未上桌</span>`;
+  const pills = (view.titles[id] || [])
+    .slice()
+    .sort((a, b) => Stats.TITLE_ORDER.indexOf(a) - Stats.TITLE_ORDER.indexOf(b))
+    .map((t) => `<span class="stat-pill">${esc(t)}</span>`)
+    .join("");
+  return `${bench}${pills}`;
+}
+
+function statCrown(view, id, key) {
+  return view.crown[key] && view.crown[key].has(id)
+    ? `<span class="stat-crown">👑</span>`
+    : "";
+}
+
+function radarSvg(row, ranked) {
+  const s = Stats.radarScores(row, ranked);
+  const cx = 100;
+  const cy = 96;
+  const r = 58;
+  const axes = [
+    { key: "attack", label: "進攻", x: 0, y: -1 },
+    { key: "defense", label: "防守", x: 1, y: 0 },
+    { key: "power", label: "牌力", x: 0, y: 1 },
+    { key: "luck", label: "運氣", x: -1, y: 0 },
+  ];
+  const diamond = (scale) =>
+    axes
+      .map((a) => `${cx + a.x * r * scale},${cy + a.y * r * scale}`)
+      .join(" ");
+  const valuePts = axes
+    .map((a) => `${cx + a.x * r * s[a.key]},${cy + a.y * r * s[a.key]}`)
+    .join(" ");
+  const labels = axes
+    .map((a) => {
+      const lx = cx + a.x * (r + 20);
+      const ly = cy + a.y * (r + 18) + 4;
+      return `<text x="${lx}" y="${ly}" text-anchor="middle">${a.label}</text>`;
+    })
+    .join("");
+  return `<svg class="stat-radar" viewBox="0 0 200 196" aria-hidden="true">
+      <polygon points="${diamond(1)}" class="radar-grid" />
+      <polygon points="${diamond(0.66)}" class="radar-grid" />
+      <polygon points="${diamond(0.33)}" class="radar-grid" />
+      <line x1="${cx}" y1="${cy - r}" x2="${cx}" y2="${cy + r}" class="radar-axis" />
+      <line x1="${cx - r}" y1="${cy}" x2="${cx + r}" y2="${cy}" class="radar-axis" />
+      <polygon points="${valuePts}" class="radar-fill" />
+      ${labels}
+    </svg>`;
+}
+
 function renderStats() {
   const view = Stats.buildStatsView(State.game);
   $("stats-hint").textContent = view.unlocked
-    ? `已完成 ${view.winds} 圈。頭銜按目前食糊／自摸／出銃／連莊／賞罰統計。`
-    : `已完成 ${view.winds}／4 圈。打完東南西北一個全圈之後先會賦予頭銜。`;
+    ? `已完成 ${view.winds} 圈。點玩家睇詳細比率。頭銜按目前食糊／自摸／出銃／連莊／賞罰統計。`
+    : `已完成 ${view.winds}／4 圈。點玩家睇詳細比率。打完東南西北一個全圈之後先會賦予頭銜。`;
   if (!view.ranked.length) {
     $("stats-list").innerHTML = `<div class="card"><p class="hint">尚未有玩家。</p></div>`;
     return;
@@ -376,21 +447,12 @@ function renderStats() {
   $("stats-list").innerHTML = view.ranked
     .map((row) => {
       const id = row.player.id;
-      const bench = row.seated ? "" : `<span class="stat-pill">未上桌</span>`;
-      const pills = (view.titles[id] || [])
-        .slice()
-        .sort((a, b) => Stats.TITLE_ORDER.indexOf(a) - Stats.TITLE_ORDER.indexOf(b))
-        .map((t) => `<span class="stat-pill">${esc(t)}</span>`)
-        .join("");
-      const crown = (key) =>
-        view.crown[key] && view.crown[key].has(id)
-          ? `<span class="stat-crown">👑</span>`
-          : "";
-      return `<div class="stat-card">
+      const crown = (key) => statCrown(view, id, key);
+      return `<button type="button" class="stat-card" data-player-id="${esc(id)}">
         <div class="stat-head">
           ${avatarHtml(row.player)}
           <div class="stat-name">${esc(row.player.name)}</div>
-          <div class="stat-titles">${bench}${pills}</div>
+          <div class="stat-titles">${statTitlePills(view, row)}</div>
         </div>
         <div class="stat-grid">
           <div class="stat-cell"><div class="num">${row.hu}${crown("hu")}</div><div class="lbl">食糊</div></div>
@@ -398,9 +460,888 @@ function renderStats() {
           <div class="stat-cell"><div class="num">${row.chong}${crown("chong")}</div><div class="lbl">出銃</div></div>
           <div class="stat-cell"><div class="num">${Stats.formatStatDi(row.specialDi)}${crown("specialDi")}</div><div class="lbl">特別賞罰</div></div>
         </div>
-      </div>`;
+      </button>`;
     })
     .join("");
+  $("stats-list").querySelectorAll("[data-player-id]").forEach((btn) => {
+    btn.onclick = () => openStatDetail(btn.dataset.playerId);
+  });
+}
+
+function openStatDetail(playerId) {
+  ui.statPlayerId = playerId;
+  renderStatDetail();
+  openModal("modal-stat");
+}
+
+function renderStatDetail() {
+  const view = Stats.buildStatsView(State.game);
+  const box = $("stat-detail");
+  if (!box) return;
+  const row =
+    view.ranked.find((r) => r.player.id === ui.statPlayerId) || view.ranked[0];
+  if (!row) {
+    box.innerHTML = `<p class="hint">尚未有玩家。</p>`;
+    return;
+  }
+  ui.statPlayerId = row.player.id;
+  const id = row.player.id;
+  const crown = (key) => statCrown(view, id, key);
+  const avg = row.avgFan == null ? "-" : Stats.formatStatDi(row.avgFan);
+  const score = Number(row.player.score) || 0;
+  const scoreCls = score > 0 ? "pos" : score < 0 ? "neg" : "";
+  const extra = (row.kindRates || [])
+    .map(
+      (k) =>
+        `<div class="stat-cell"><div class="num">${Stats.formatPct(k.rate)}</div><div class="lbl">${esc(
+          k.label
+        )}</div></div>`
+    )
+    .join("");
+  const dock = view.ranked
+    .map((r) => {
+      const on = r.player.id === id ? "on" : "";
+      return `<button type="button" class="stat-dock-item ${on}" data-player-id="${esc(
+        r.player.id
+      )}">${avatarHtml(r.player)}<span>${esc(r.player.name)}</span></button>`;
+    })
+    .join("");
+  box.innerHTML = `
+    <div class="stat-detail-card">
+      <div class="stat-detail-head">
+        ${avatarHtml(row.player)}
+        <div class="stat-name">${esc(row.player.name)}</div>
+        <div class="stat-detail-score ${scoreCls}">${formatMoney(score)}</div>
+      </div>
+      <div class="stat-titles stat-detail-titles">${statTitlePills(view, row)}</div>
+      <div class="stat-grid">
+        <div class="stat-cell"><div class="num">${row.hu}${crown("hu")}</div><div class="lbl">食糊</div></div>
+        <div class="stat-cell"><div class="num">${row.zimo}${crown("zimo")}</div><div class="lbl">自摸</div></div>
+        <div class="stat-cell"><div class="num">${row.chong}${crown("chong")}</div><div class="lbl">出銃</div></div>
+        <div class="stat-cell"><div class="num">${Stats.formatStatDi(row.specialDi)}${crown("specialDi")}</div><div class="lbl">特別賞罰</div></div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-cell"><div class="num">${avg}</div><div class="lbl">平均番數</div></div>
+        <div class="stat-cell"><div class="num">${Stats.formatPct(row.huRate)}</div><div class="lbl">食糊率</div></div>
+        <div class="stat-cell"><div class="num">${Stats.formatPct(row.zimoRate)}</div><div class="lbl">自摸率</div></div>
+        <div class="stat-cell"><div class="num">${Stats.formatPct(row.chongRate)}</div><div class="lbl">出銃率</div></div>
+      </div>
+      <div class="stat-grid stat-grid-extra">${extra}</div>
+      ${radarSvg(row, view.ranked)}
+      <div class="stat-brand">🦊 Himu Sex Boys Club 港式台牌</div>
+      <div class="stat-dock-row">
+        <div class="stat-dock">${dock}</div>
+        <button type="button" class="stat-share-fab" id="stat-share" aria-label="分享賽果">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 4v11" />
+            <path d="M8.2 7.8 12 4l3.8 3.8" />
+            <path d="M6 12.5v6.2A1.8 1.8 0 0 0 7.8 20.5h8.4a1.8 1.8 0 0 0 1.8-1.8v-6.2" />
+          </svg>
+        </button>
+      </div>
+      <button class="btn" id="stat-detail-close" type="button">關閉</button>
+    </div>`;
+  box.querySelectorAll(".stat-dock-item").forEach((btn) => {
+    btn.onclick = () => {
+      ui.statPlayerId = btn.dataset.playerId;
+      renderStatDetail();
+    };
+  });
+  const closeBtn = $("stat-detail-close");
+  if (closeBtn) closeBtn.onclick = () => closeModal("modal-stat");
+  const shareBtn = $("stat-share");
+  if (shareBtn) shareBtn.onclick = () => shareStatCard(row, view);
+}
+
+function shareFont() {
+  return `system-ui, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif`;
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  const rad = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rad, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rad);
+  ctx.arcTo(x + w, y + h, x, y + h, rad);
+  ctx.arcTo(x, y + h, x, y, rad);
+  ctx.arcTo(x, y, x + w, y, rad);
+  ctx.closePath();
+}
+
+function loadAvatarImage(player) {
+  return new Promise((resolve) => {
+    if (!player || player.iconType !== "photo" || !player.icon) {
+      resolve(null);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = player.icon;
+  });
+}
+
+function drawAvatarOnCanvas(ctx, player, img, x, y, size) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.fillStyle = "#e8dfd0";
+  ctx.fill();
+  ctx.clip();
+  if (img) {
+    ctx.drawImage(img, x, y, size, size);
+  } else {
+    ctx.fillStyle = "#2c2518";
+    ctx.font = `${Math.round(size * 0.52)}px ${shareFont()}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(player?.icon || "🐶", x + size / 2, y + size / 2 + 1);
+  }
+  ctx.restore();
+  ctx.beginPath();
+  ctx.arc(x + size / 2, y + size / 2, size / 2 - 1, 0, Math.PI * 2);
+  ctx.strokeStyle = "#c4a574";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function drawStatGrid(ctx, items, y, x0, width, cols, numSize) {
+  const colW = width / cols;
+  items.forEach((it, i) => {
+    const cx = x0 + (i % cols) * colW + colW / 2;
+    const cy = y + Math.floor(i / cols) * 78;
+    ctx.fillStyle = "#2c2518";
+    ctx.font = `800 ${numSize}px ${shareFont()}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(it.num + (it.crown ? " 👑" : ""), cx, cy);
+    ctx.fillStyle = "#8a7c68";
+    ctx.font = `700 18px ${shareFont()}`;
+    ctx.fillText(it.lbl, cx, cy + 24);
+  });
+  return y + Math.ceil(items.length / cols) * 78;
+}
+
+function drawShareRadar(ctx, scores, cx, cy, r) {
+  const axes = [
+    { key: "attack", label: "進攻", x: 0, y: -1 },
+    { key: "defense", label: "防守", x: 1, y: 0 },
+    { key: "power", label: "牌力", x: 0, y: 1 },
+    { key: "luck", label: "運氣", x: -1, y: 0 },
+  ];
+  const pts = (scale) =>
+    axes.map((a) => [cx + a.x * r * scale, cy + a.y * r * scale]);
+  const strokePoly = (scale, color, width) => {
+    const p = pts(scale);
+    ctx.beginPath();
+    ctx.moveTo(p[0][0], p[0][1]);
+    p.slice(1).forEach(([x, y]) => ctx.lineTo(x, y));
+    ctx.closePath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.stroke();
+  };
+  strokePoly(1, "#d7cbb8", 1.4);
+  strokePoly(0.66, "#d7cbb8", 1.2);
+  strokePoly(0.33, "#d7cbb8", 1.2);
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r);
+  ctx.lineTo(cx, cy + r);
+  ctx.moveTo(cx - r, cy);
+  ctx.lineTo(cx + r, cy);
+  ctx.strokeStyle = "#e2d6c4";
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  const fill = axes.map((a) => [
+    cx + a.x * r * (scores[a.key] || 0),
+    cy + a.y * r * (scores[a.key] || 0),
+  ]);
+  ctx.beginPath();
+  ctx.moveTo(fill[0][0], fill[0][1]);
+  fill.slice(1).forEach(([x, y]) => ctx.lineTo(x, y));
+  ctx.closePath();
+  ctx.fillStyle = "rgba(212, 176, 106, 0.42)";
+  ctx.fill();
+  ctx.strokeStyle = "#b8924a";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = "#8a7c68";
+  ctx.font = `700 18px ${shareFont()}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  axes.forEach((a) => {
+    ctx.fillText(a.label, cx + a.x * (r + 28), cy + a.y * (r + 26));
+  });
+}
+
+async function renderStatShareJpeg(row, view) {
+  const player = row.player;
+  const avatarImg = await loadAvatarImage(player);
+  if (document.fonts && document.fonts.ready) {
+    try {
+      await document.fonts.ready;
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  const W = 720;
+  const pad = 36;
+  const canvas = document.createElement("canvas");
+  const scale = 2;
+  canvas.width = W * scale;
+  canvas.height = 1280 * scale;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(scale, scale);
+  ctx.fillStyle = "#f7f1e6";
+  roundRectPath(ctx, 0, 0, W, 1280, 36);
+  ctx.fill();
+
+  let y = 32;
+  drawAvatarOnCanvas(ctx, player, avatarImg, pad, y, 64);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#2c2518";
+  ctx.font = `800 28px ${shareFont()}`;
+  const name = String(player.name || "");
+  ctx.fillText(name, pad + 78, y + 32);
+  const score = Number(player.score) || 0;
+  ctx.textAlign = "right";
+  ctx.font = `800 34px ${shareFont()}`;
+  ctx.fillStyle = score > 0 ? "#2e9e5b" : score < 0 ? "#c44536" : "#6d5f4a";
+  ctx.fillText(formatMoney(score), W - pad, y + 32);
+  y += 88;
+
+  const titles = [];
+  if (!row.seated) titles.push("未上桌");
+  (view.titles[player.id] || [])
+    .slice()
+    .sort((a, b) => Stats.TITLE_ORDER.indexOf(a) - Stats.TITLE_ORDER.indexOf(b))
+    .forEach((t) => titles.push(t));
+  if (titles.length) {
+    ctx.font = `700 18px ${shareFont()}`;
+    let tx = pad;
+    let ty = y;
+    titles.forEach((t) => {
+      const tw = ctx.measureText(t).width + 28;
+      if (tx + tw > W - pad) {
+        tx = pad;
+        ty += 36;
+      }
+      roundRectPath(ctx, tx, ty - 20, tw, 30, 15);
+      ctx.fillStyle = "#e7ddce";
+      ctx.fill();
+      ctx.fillStyle = "#6d5f4a";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(t, tx + tw / 2, ty - 5);
+      tx += tw + 8;
+    });
+    y = ty + 28;
+  }
+
+  const id = player.id;
+  const crown = (key) => !!(view.crown[key] && view.crown[key].has(id));
+  const avg = row.avgFan == null ? "-" : Stats.formatStatDi(row.avgFan);
+  y = drawStatGrid(
+    ctx,
+    [
+      { num: String(row.hu), lbl: "食糊", crown: crown("hu") },
+      { num: String(row.zimo), lbl: "自摸", crown: crown("zimo") },
+      { num: String(row.chong), lbl: "出銃", crown: crown("chong") },
+      { num: Stats.formatStatDi(row.specialDi), lbl: "特別賞罰", crown: crown("specialDi") },
+    ],
+    y + 28,
+    pad,
+    W - pad * 2,
+    4,
+    36
+  );
+  y = drawStatGrid(
+    ctx,
+    [
+      { num: avg, lbl: "平均番數" },
+      { num: Stats.formatPct(row.huRate), lbl: "食糊率" },
+      { num: Stats.formatPct(row.zimoRate), lbl: "自摸率" },
+      { num: Stats.formatPct(row.chongRate), lbl: "出銃率" },
+    ],
+    y + 8,
+    pad,
+    W - pad * 2,
+    4,
+    32
+  );
+  y = drawStatGrid(
+    ctx,
+    (row.kindRates || []).map((k) => ({
+      num: Stats.formatPct(k.rate),
+      lbl: k.label,
+    })),
+    y + 4,
+    pad,
+    W - pad * 2,
+    3,
+    28
+  );
+
+  drawShareRadar(ctx, Stats.radarScores(row), W / 2, y + 118, 88);
+  y += 250;
+
+  const brand = "Himu Sex Boys Club 港式台牌";
+  ctx.font = `700 17px ${shareFont()}`;
+  const brandW = ctx.measureText(brand).width;
+  const foxW = 28;
+  const gap = 8;
+  const lockX = (W - (foxW + gap + brandW)) / 2;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.font = `32px ${shareFont()}`;
+  ctx.fillText("🦊", lockX, y + 8);
+  ctx.fillStyle = "#8a7c68";
+  ctx.font = `700 17px ${shareFont()}`;
+  ctx.fillText(brand, lockX + foxW + gap, y + 8);
+
+  const usedH = Math.min(1280, y + 48);
+  const out = document.createElement("canvas");
+  out.width = W * scale;
+  out.height = usedH * scale;
+  const octx = out.getContext("2d");
+  octx.fillStyle = "#f7f1e6";
+  octx.fillRect(0, 0, out.width, out.height);
+  octx.drawImage(canvas, 0, 0, out.width, usedH * scale, 0, 0, out.width, usedH * scale);
+  return new Promise((resolve, reject) => {
+    out.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("toBlob"))),
+      "image/jpeg",
+      0.92
+    );
+  });
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+async function shareJpegBlob(blob, filename, title, text) {
+  const file = new File([blob], filename, { type: "image/jpeg" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    await navigator.share({ files: [file], title, text });
+    return;
+  }
+  downloadBlob(blob, filename);
+}
+
+async function shareStatCard(row, view) {
+  const btn = $("stat-share");
+  if (btn) btn.disabled = true;
+  try {
+    const blob = await renderStatShareJpeg(row, view);
+    const safe = String(row.player.name || "player").replace(/[\\/:*?"<>|]/g, "_");
+    await shareJpegBlob(
+      blob,
+      `${safe}-統計.jpg`,
+      `${row.player.name} 統計`,
+      `Himu Sex Boys Club 港式台牌 · ${row.player.name}`
+    );
+  } catch (err) {
+    if (err && err.name === "AbortError") return;
+    try {
+      const blob = await renderStatShareJpeg(row, view);
+      const safe = String(row.player.name || "player").replace(/[\\/:*?"<>|]/g, "_");
+      downloadBlob(blob, `${safe}-統計.jpg`);
+    } catch (e2) {
+      alert("無法產生分享圖片");
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function resultTitles(view, id) {
+  return (view.titles[id] || [])
+    .slice()
+    .sort((a, b) => Stats.TITLE_ORDER.indexOf(a) - Stats.TITLE_ORDER.indexOf(b));
+}
+
+function resultTitleHtml(titles) {
+  return titles
+    .map((t) => `<span class="result-mini-title">🏆 ${esc(t)}</span>`)
+    .join("");
+}
+
+function scoreTone(n) {
+  const v = Number(n) || 0;
+  if (v > 0) return "pos";
+  if (v < 0) return "neg";
+  return "";
+}
+
+function rankPlayersByScore() {
+  return (State.game.players || []).slice().sort((a, b) => {
+    const d = (Number(b.score) || 0) - (Number(a.score) || 0);
+    if (d) return d;
+    return String(a.name || "").localeCompare(String(b.name || ""), "zh-Hant");
+  });
+}
+
+function settlePayments() {
+  const keepExact = State.game.settings && State.game.settings.keepExact;
+  const people = (State.game.players || []).map((p) => ({
+    id: p.id,
+    player: p,
+    remain: Number(p.score) || 0,
+  }));
+  const creditors = people
+    .filter((p) => p.remain > 0.005)
+    .sort((a, b) => b.remain - a.remain);
+  const debtors = people
+    .filter((p) => p.remain < -0.005)
+    .sort((a, b) => a.remain - b.remain);
+  const rows = [];
+  let i = 0;
+  let j = 0;
+  while (i < debtors.length && j < creditors.length) {
+    const need = -debtors[i].remain;
+    const give = creditors[j].remain;
+    const amt = Scoring.roundAmount(Math.min(need, give), keepExact);
+    if (amt > 0.005) {
+      rows.push({ from: debtors[i].player, to: creditors[j].player, amount: amt });
+      debtors[i].remain = Scoring.roundAmount(debtors[i].remain + amt, keepExact);
+      creditors[j].remain = Scoring.roundAmount(creditors[j].remain - amt, keepExact);
+    }
+    if (Math.abs(debtors[i].remain) < 0.01) i += 1;
+    else if (Math.abs(creditors[j].remain) < 0.01) j += 1;
+    else i += 1;
+  }
+  return rows;
+}
+
+function resultSeatCardHtml(p, titles, pos) {
+  const sc = p ? Number(p.score) || 0 : 0;
+  return `<div class="result-seat-card ${pos}">
+      ${avatarHtml(p)}
+      <div class="nm">${esc(p?.name || "空位")}</div>
+      <div class="sc ${scoreTone(sc)}">${p ? formatMoney(sc) : "-"}</div>
+      ${resultTitleHtml(titles)}
+    </div>`;
+}
+
+function resultBrandHtml() {
+  return `<div class="result-brand">🦊 Himu Sex Boys Club 港式台牌</div>`;
+}
+
+function renderResultPages() {
+  const view = Stats.buildStatsView(State.game);
+  const g = State.game;
+  const north = State.player(g.seats[3]);
+  const east = State.player(g.seats[0]);
+  const south = State.player(g.seats[1]);
+  const west = State.player(g.seats[2]);
+  $("result-page-0").innerHTML = `<div class="result-card">
+    <div class="result-table">
+      ${resultSeatCardHtml(north, resultTitles(view, north?.id), "n")}
+      ${resultSeatCardHtml(west, resultTitles(view, west?.id), "w")}
+      ${resultSeatCardHtml(east, resultTitles(view, east?.id), "e")}
+      ${resultSeatCardHtml(south, resultTitles(view, south?.id), "s")}
+    </div>
+    ${resultBrandHtml()}
+  </div>`;
+
+  const ranked = rankPlayersByScore();
+  $("result-page-1").innerHTML = `<div class="result-card">${
+    ranked.length
+      ? ranked
+          .map((p, i) => {
+            const titles = resultTitles(view, p.id);
+            return `<div class="result-rank-row">
+              <div class="result-rank-n">${i === 0 ? "👑" : `${i + 1}位`}</div>
+              ${avatarHtml(p)}
+              <div class="result-rank-main">
+                <div class="result-rank-name">${esc(p.name)}</div>
+                ${resultTitleHtml(titles)}
+              </div>
+              <div class="result-rank-score ${scoreTone(p.score)}">${formatMoney(p.score)}</div>
+            </div>`;
+          })
+          .join("") + resultBrandHtml()
+      : `<p class="result-empty">尚未有玩家。</p>`
+  }</div>`;
+
+  const statsRows = view.ranked;
+  $("result-page-2").innerHTML = `<div class="result-card">${
+    statsRows.length
+      ? statsRows
+          .map((row) => {
+            const id = row.player.id;
+            const pills = resultTitles(view, id)
+              .map((t) => `<span class="stat-pill">${esc(t)}</span>`)
+              .join("");
+            const crown = (key) =>
+              view.crown[key] && view.crown[key].has(id)
+                ? `<span class="stat-crown">👑</span>`
+                : "";
+            return `<div class="result-stat-block">
+              <div class="result-stat-top">
+                ${avatarHtml(row.player)}
+                <div class="result-stat-name">${esc(row.player.name)}</div>
+                <div class="result-stat-titles">${pills}</div>
+              </div>
+              <div class="stat-grid">
+                <div class="stat-cell"><div class="num">${row.hu}${crown("hu")}</div><div class="lbl">食糊</div></div>
+                <div class="stat-cell"><div class="num">${row.zimo}${crown("zimo")}</div><div class="lbl">自摸</div></div>
+                <div class="stat-cell"><div class="num">${row.chong}${crown("chong")}</div><div class="lbl">出銃</div></div>
+                <div class="stat-cell"><div class="num">${Stats.formatStatDi(row.specialDi)}${crown(
+              "specialDi"
+            )}</div><div class="lbl">特別賞罰</div></div>
+              </div>
+            </div>`;
+          })
+          .join("") + resultBrandHtml()
+      : `<p class="result-empty">尚未有統計。</p>`
+  }</div>`;
+
+  const pays = settlePayments();
+  $("result-page-3").innerHTML = `<div class="result-card">${
+    pays.length
+      ? pays
+          .map(
+            (p) => `<div class="result-pay-row">
+              <div>
+                ${avatarHtml(p.from)}
+                <div class="result-pay-name">${esc(p.from.name)}</div>
+              </div>
+              <div class="result-pay-arrow">→</div>
+              <div>
+                ${avatarHtml(p.to)}
+                <div class="result-pay-name">${esc(p.to.name)}</div>
+              </div>
+              <div class="result-pay-amt">$${formatMoney(p.amount)}</div>
+            </div>`
+          )
+          .join("") + resultBrandHtml()
+      : `<p class="result-empty">分數打平，唔使找數。</p>${resultBrandHtml()}`
+  }</div>`;
+
+  updateResultDots();
+}
+
+function updateResultDots() {
+  const box = $("result-dots");
+  if (!box) return;
+  box.innerHTML = [0, 1, 2, 3]
+    .map(
+      (i) =>
+        `<button type="button" class="result-dot ${
+          i === ui.resultPage ? "on" : ""
+        }" data-result-page="${i}" aria-label="第${i + 1}頁"></button>`
+    )
+    .join("");
+  box.querySelectorAll("[data-result-page]").forEach((btn) => {
+    btn.onclick = () => scrollResultPage(Number(btn.dataset.resultPage));
+  });
+}
+
+function scrollResultPage(i) {
+  ui.resultPage = Math.max(0, Math.min(3, i));
+  const scroller = $("result-scroller");
+  if (scroller) scroller.scrollTo({ left: scroller.clientWidth * ui.resultPage, behavior: "smooth" });
+  updateResultDots();
+}
+
+function bindResultPager() {
+  const root = $("result-scroller");
+  if (!root || root.dataset.pagerBound) return;
+  root.dataset.pagerBound = "1";
+  let x0 = 0;
+  let y0 = 0;
+  let axis = null;
+  let tracking = false;
+  let wheelAt = 0;
+
+  root.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      tracking = true;
+      axis = null;
+      x0 = e.clientX;
+      y0 = e.clientY;
+    },
+    { passive: true }
+  );
+  root.addEventListener(
+    "pointermove",
+    (e) => {
+      if (!tracking || axis) return;
+      const dx = e.clientX - x0;
+      const dy = e.clientY - y0;
+      if (Math.abs(dx) < 14 && Math.abs(dy) < 14) return;
+      axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+    },
+    { passive: true }
+  );
+  const finish = (e) => {
+    if (!tracking) return;
+    tracking = false;
+    if (axis !== "x") return;
+    const dx = e.clientX - x0;
+    if (dx <= -40) scrollResultPage(ui.resultPage + 1);
+    else if (dx >= 40) scrollResultPage(ui.resultPage - 1);
+  };
+  root.addEventListener("pointerup", finish, { passive: true });
+  root.addEventListener(
+    "pointercancel",
+    () => {
+      tracking = false;
+    },
+    { passive: true }
+  );
+  root.addEventListener(
+    "wheel",
+    (e) => {
+      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+      e.preventDefault();
+      const now = Date.now();
+      if (now - wheelAt < 420) return;
+      wheelAt = now;
+      if (e.deltaX > 10) scrollResultPage(ui.resultPage + 1);
+      else if (e.deltaX < -10) scrollResultPage(ui.resultPage - 1);
+    },
+    { passive: false }
+  );
+}
+
+function openResultModal() {
+  ui.resultPage = 0;
+  renderResultPages();
+  openModal("modal-result");
+  const scroller = $("result-scroller");
+  if (scroller) scroller.scrollLeft = 0;
+  document.querySelectorAll(".result-page").forEach((el) => {
+    el.scrollTop = 0;
+  });
+  updateResultDots();
+}
+
+function drawBrandFooter(ctx, W, y) {
+  const brand = "Himu Sex Boys Club 港式台牌";
+  ctx.font = `700 16px ${shareFont()}`;
+  const brandW = ctx.measureText(brand).width;
+  const foxW = 26;
+  const total = foxW + 8 + brandW;
+  const x = W - 36 - total;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.font = `28px ${shareFont()}`;
+  ctx.fillText("🦊", x, y);
+  ctx.fillStyle = "#b09a7a";
+  ctx.font = `700 16px ${shareFont()}`;
+  ctx.fillText(brand, x + foxW + 8, y);
+}
+
+function cropCanvasJpeg(canvas, scale, usedH) {
+  const W = canvas.width / scale;
+  const h = Math.min(canvas.height / scale, Math.max(usedH, 360));
+  const out = document.createElement("canvas");
+  out.width = W * scale;
+  out.height = h * scale;
+  const octx = out.getContext("2d");
+  octx.fillStyle = "#f7f1e6";
+  octx.fillRect(0, 0, out.width, out.height);
+  octx.drawImage(canvas, 0, 0, out.width, h * scale, 0, 0, out.width, h * scale);
+  return new Promise((resolve, reject) => {
+    out.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("toBlob"))), "image/jpeg", 0.92);
+  });
+}
+
+async function renderResultShareJpeg(page) {
+  if (document.fonts && document.fonts.ready) {
+    try {
+      await document.fonts.ready;
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  const view = Stats.buildStatsView(State.game);
+  const W = 720;
+  const scale = 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = W * scale;
+  canvas.height = 1600 * scale;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(scale, scale);
+  ctx.fillStyle = "#f7f1e6";
+  roundRectPath(ctx, 0, 0, W, 1600, 28);
+  ctx.fill();
+
+  const avatars = {};
+  const need = new Set();
+  (State.game.players || []).forEach((p) => need.add(p.id));
+  await Promise.all(
+    [...need].map(async (id) => {
+      avatars[id] = await loadAvatarImage(State.player(id));
+    })
+  );
+
+  const drawP = (p, x, y, size) => {
+    if (!p) return;
+    drawAvatarOnCanvas(ctx, p, avatars[p.id], x, y, size);
+  };
+
+  let used = 420;
+  if (page === 0) {
+    const seats = [
+      { p: State.player(State.game.seats[3]), x: W / 2, y: 48 },
+      { p: State.player(State.game.seats[0]), x: W - 150, y: 210 },
+      { p: State.player(State.game.seats[1]), x: W / 2, y: 372 },
+      { p: State.player(State.game.seats[2]), x: 150, y: 210 },
+    ];
+    seats.forEach(({ p, x, y }) => {
+      roundRectPath(ctx, x - 90, y, 180, 150, 18);
+      ctx.fillStyle = "#fffdf8";
+      ctx.fill();
+      drawP(p, x - 28, y + 12, 56);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillStyle = "#2c2518";
+      ctx.font = `700 20px ${shareFont()}`;
+      ctx.fillText(p?.name || "空位", x, y + 74);
+      const sc = p ? Number(p.score) || 0 : 0;
+      ctx.fillStyle = sc > 0 ? "#2e9e5b" : sc < 0 ? "#c44536" : "#6d5f4a";
+      ctx.font = `800 26px ${shareFont()}`;
+      ctx.fillText(p ? formatMoney(sc) : "-", x, y + 98);
+      const titles = resultTitles(view, p?.id);
+      ctx.fillStyle = "#9a8048";
+      ctx.font = `700 15px ${shareFont()}`;
+      titles.slice(0, 2).forEach((t, i) => ctx.fillText("🏆 " + t, x, y + 126 + i * 16));
+    });
+    used = 560;
+  } else if (page === 1) {
+    let y = 28;
+    rankPlayersByScore().forEach((p, i) => {
+      ctx.fillStyle = "#2c2518";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.font = `800 20px ${shareFont()}`;
+      ctx.fillText(i === 0 ? "👑" : `${i + 1}位`, 28, y + 28);
+      drawP(p, 88, y + 8, 48);
+      ctx.fillStyle = "#2c2518";
+      ctx.font = `800 24px ${shareFont()}`;
+      ctx.fillText(p.name, 150, y + 22);
+      ctx.fillStyle = "#9a8048";
+      ctx.font = `700 15px ${shareFont()}`;
+      ctx.fillText(resultTitles(view, p.id).map((t) => "🏆" + t).join("  ") || "", 150, y + 46);
+      const sc = Number(p.score) || 0;
+      ctx.textAlign = "right";
+      ctx.fillStyle = sc > 0 ? "#2e9e5b" : sc < 0 ? "#c44536" : "#6d5f4a";
+      ctx.font = `800 28px ${shareFont()}`;
+      ctx.fillText(formatMoney(sc), W - 28, y + 28);
+      y += 78;
+    });
+    used = y + 24;
+  } else if (page === 2) {
+    let y = 20;
+    view.ranked.forEach((row) => {
+      roundRectPath(ctx, 20, y, W - 40, 118, 16);
+      ctx.fillStyle = "#fffdf8";
+      ctx.fill();
+      drawP(row.player, 32, y + 14, 36);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#2c2518";
+      ctx.font = `800 22px ${shareFont()}`;
+      ctx.fillText(row.player.name, 80, y + 32);
+      ctx.textAlign = "right";
+      ctx.fillStyle = "#6d5f4a";
+      ctx.font = `700 14px ${shareFont()}`;
+      ctx.fillText(resultTitles(view, row.player.id).join("  "), W - 36, y + 32);
+      const cells = [
+        [String(row.hu), "食糊"],
+        [String(row.zimo), "自摸"],
+        [String(row.chong), "出銃"],
+        [Stats.formatStatDi(row.specialDi), "特別賞罰"],
+      ];
+      cells.forEach((c, i) => {
+        const cx = 90 + i * 155;
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#2c2518";
+        ctx.font = `800 26px ${shareFont()}`;
+        ctx.fillText(c[0], cx, y + 74);
+        ctx.fillStyle = "#8a7c68";
+        ctx.font = `700 14px ${shareFont()}`;
+        ctx.fillText(c[1], cx, y + 96);
+      });
+      y += 130;
+    });
+    used = y + 8;
+  } else {
+    const pays = settlePayments();
+    let y = 24;
+    if (!pays.length) {
+      ctx.fillStyle = "#8a7c68";
+      ctx.textAlign = "center";
+      ctx.font = `700 22px ${shareFont()}`;
+      ctx.fillText("分數打平，唔使找數。", W / 2, 180);
+      used = 280;
+    } else {
+      pays.forEach((p) => {
+        drawP(p.from, 40, y, 52);
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillStyle = "#2c2518";
+        ctx.font = `700 16px ${shareFont()}`;
+        ctx.fillText(p.from.name, 66, y + 56);
+        ctx.font = `800 22px ${shareFont()}`;
+        ctx.fillStyle = "#8a7c68";
+        ctx.fillText("→", W / 2 - 40, y + 16);
+        drawP(p.to, 250, y, 52);
+        ctx.fillStyle = "#2c2518";
+        ctx.font = `700 16px ${shareFont()}`;
+        ctx.fillText(p.to.name, 276, y + 56);
+        ctx.textAlign = "right";
+        ctx.fillStyle = "#2e9e5b";
+        ctx.font = `800 28px ${shareFont()}`;
+        ctx.fillText("$" + formatMoney(p.amount), W - 32, y + 18);
+        y += 92;
+      });
+      used = y + 8;
+    }
+  }
+
+  drawBrandFooter(ctx, W, used + 18);
+  return cropCanvasJpeg(canvas, scale, used + 56);
+}
+
+async function shareResultPage() {
+  const btn = $("result-share");
+  if (btn) btn.disabled = true;
+  const names = ["戰況", "排行榜", "統計", "找數"];
+  try {
+    const blob = await renderResultShareJpeg(ui.resultPage);
+    await shareJpegBlob(
+      blob,
+      `總賽果-${names[ui.resultPage] || "分享"}.jpg`,
+      `總賽果 · ${names[ui.resultPage]}`,
+      "Himu Sex Boys Club 港式台牌"
+    );
+  } catch (err) {
+    if (err && err.name === "AbortError") return;
+    try {
+      const blob = await renderResultShareJpeg(ui.resultPage);
+      downloadBlob(blob, `總賽果-${names[ui.resultPage] || "分享"}.jpg`);
+    } catch (e2) {
+      alert("無法產生分享圖片");
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 function seatChoices(targetId, selected, excludeSeat) {
@@ -435,6 +1376,7 @@ function currentWinDraft() {
       seats: g.seats,
       subjectSeat: ui.winnerSeat,
       receive: ui.specialReceive,
+      kind: ui.specialKind,
       perDoor: ui.specialPerDoor,
       otherSeats: ui.specialTargets,
       di: ui.specialDi,
@@ -481,7 +1423,7 @@ function renderWinPreview() {
     const scope = result.perDoor ? "每門" : "指定玩家";
     const verb = result.receive ? "收" : "賠";
     const lines = [
-      `${esc(sub?.name)} 特別賞罰　${verb}　${scope}　${result.di}底（${result.fans}番）`,
+      `${esc(sub?.name)} 特別賞罰　${verb}　${esc(result.kind || "")}　${scope}　${result.di}底（${result.fans}番）`,
       `每門／每人 ${formatMoney(result.each)}　台價 ${formatMoney(State.game.settings.taiValue)}`,
     ];
     const projected = {};
@@ -626,10 +1568,18 @@ function bindWinChoices() {
   };
   $("special-pay").onclick = () => {
     ui.specialReceive = false;
+    ensureSpecialKind();
     refreshWinModal();
   };
   $("special-recv").onclick = () => {
     ui.specialReceive = true;
+    ensureSpecialKind();
+    refreshWinModal();
+  };
+  $("special-kind").onclick = (ev) => {
+    const b = ev.target.closest("[data-kind]");
+    if (!b) return;
+    ui.specialKind = b.dataset.kind;
     refreshWinModal();
   };
   $("special-door").onclick = () => {
@@ -738,8 +1688,17 @@ function refreshWinModal() {
     renderDiscarderChoices();
   }
   if (isSpecial) {
+    ensureSpecialKind();
     $("special-pay").className = ui.specialReceive ? "btn ghost" : "btn";
     $("special-recv").className = ui.specialReceive ? "btn" : "btn ghost";
+    $("special-kind").innerHTML = specialKindList()
+      .map(
+        (k) =>
+          `<button type="button" class="choice ${
+            ui.specialKind === k ? "selected" : ""
+          }" data-kind="${esc(k)}">${esc(k)}</button>`
+      )
+      .join("");
     $("special-door").className = ui.specialPerDoor ? "btn" : "btn ghost";
     $("special-others").className = ui.specialPerDoor ? "btn ghost" : "btn";
     $("special-targets-wrap").style.display = ui.specialPerDoor ? "none" : "";
@@ -764,6 +1723,7 @@ function openWinFromSeat(seat) {
   ui.multiRon = false;
   ui.faceFans = { [seat]: 5 };
   ui.specialReceive = false;
+  ui.specialKind = "追三/四";
   ui.specialPerDoor = true;
   ui.specialTargets = [];
   ui.specialDi = 1;
@@ -812,7 +1772,7 @@ function winNote(result) {
           `${State.player(p.loserId)?.name}畀${State.player(p.winnerId)?.name} ${formatMoney(p.paid)}`
       )
       .join("，");
-    return `${sub?.name} 特別賞罰 ${verb}${scope} ${result.di}底（${result.fans}番）　${pays}`;
+    return `${sub?.name} 特別賞罰 ${verb}${result.kind || ""} ${scope} ${result.di}底（${result.fans}番）　${pays}`;
   }
   const winSeats = result.winnerSeats || [result.winnerSeat];
   const names = winSeats
@@ -1057,6 +2017,29 @@ function boot() {
     renderStats();
     showScreen("screen-stats");
   };
+  $("modal-stat").onclick = (ev) => {
+    if (ev.target.id === "modal-stat") closeModal("modal-stat");
+  };
+  $("btn-result").onclick = () => openResultModal();
+  $("result-close").onclick = () => closeModal("modal-result");
+  $("modal-result").onclick = (ev) => {
+    if (ev.target.id === "modal-result") closeModal("modal-result");
+  };
+  $("result-share").onclick = () => shareResultPage();
+  bindResultPager();
+  $("result-scroller").addEventListener(
+    "scroll",
+    () => {
+      const scroller = $("result-scroller");
+      const w = scroller.clientWidth || 1;
+      const next = Math.round(scroller.scrollLeft / w);
+      if (next !== ui.resultPage) {
+        ui.resultPage = Math.max(0, Math.min(3, next));
+        updateResultDots();
+      }
+    },
+    { passive: true }
+  );
 
   $("btn-set-dealer").onclick = () => openDealerModal();
   $("dealer-cancel").onclick = () => closeModal("modal-dealer");

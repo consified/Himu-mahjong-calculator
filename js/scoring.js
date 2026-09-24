@@ -262,6 +262,7 @@ function settleSpecial({
   seats,
   subjectSeat,
   receive,
+  kind,
   perDoor,
   otherSeats,
   di,
@@ -306,6 +307,7 @@ function settleSpecial({
   return {
     type: "special",
     receive: !!receive,
+    kind: kind || "",
     perDoor: !!perDoor,
     di: diNum,
     fans,

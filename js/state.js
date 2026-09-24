@@ -62,9 +62,10 @@ function buildWinLogExtra(game, result, keepExact) {
   pushTag(tags, dealerId, "莊");
   if (result.type === "special") {
     const di = Stats.formatStatDi(result.di);
+    const kind = result.kind ? `${result.kind} ` : "";
     (result.payments || []).forEach((p) => {
-      pushTag(tags, p.winnerId, `獎${di}底`);
-      pushTag(tags, p.loserId, `罰${di}底`);
+      pushTag(tags, p.winnerId, `${kind}獎${di}底`);
+      pushTag(tags, p.loserId, `${kind}罰${di}底`);
     });
   } else {
     const seen = new Set();
@@ -84,6 +85,7 @@ function buildWinLogExtra(game, result, keepExact) {
     deltas,
     tags,
     dealerId,
+    seats: (game.seats || []).slice(),
     roundWind: game.roundWind,
     roundHand: game.roundHand,
   };
@@ -258,6 +260,9 @@ const State = {
         faceFan: p.breakdown && p.breakdown.faceFan,
       })),
       di: result.type === "special" ? result.di : undefined,
+      kind: result.type === "special" ? result.kind : undefined,
+      receive: result.type === "special" ? result.receive : undefined,
+      subjectId: result.type === "special" ? result.subjectId : undefined,
       ...extra,
     });
     this.save();
@@ -277,6 +282,7 @@ const State = {
     pushTag(tags, dealerId, "流局");
     Stats.recordLian(this.game, dealerId, this.game.consecutive, !!stays);
     Stats.recordWindProgress(this.game, result);
+    Stats.recordSeatedHands(this.game, this.game.seats);
     this.game.laPendingCancel = [];
     this.game.dealerSeat = result.dealerSeat;
     this.game.consecutive = result.consecutive;
@@ -291,6 +297,7 @@ const State = {
       deltas: {},
       tags,
       dealerId,
+      seats: (this.game.seats || []).slice(),
       roundWind: wind,
       roundHand: hand,
     });

@@ -1,3 +1,19 @@
+const KIND_RATE_DEFS = [
+  { kind: "追三/四", label: "被追三/四率" },
+  { kind: "123順子", label: "骰123率" },
+  { kind: "暗槓", label: "暗槓率" },
+  { kind: "花草", label: "花草率" },
+  { kind: "圍骰", label: "圍骰率" },
+];
+
+function emptyKinds() {
+  const o = {};
+  KIND_RATE_DEFS.forEach((d) => {
+    o[d.kind] = 0;
+  });
+  return o;
+}
+
 function emptyPlayerStat() {
   return {
     hu: 0,
@@ -7,6 +23,8 @@ function emptyPlayerStat() {
     fanHands: 0,
     specialDi: 0,
     maxLian: 0,
+    handsPlayed: 0,
+    kinds: emptyKinds(),
   };
 }
 
@@ -14,7 +32,24 @@ function ensurePlayerStat(game, id) {
   if (!id) return emptyPlayerStat();
   if (!game.playerStats) game.playerStats = {};
   if (!game.playerStats[id]) game.playerStats[id] = emptyPlayerStat();
-  return game.playerStats[id];
+  const st = game.playerStats[id];
+  if (!st.kinds) st.kinds = emptyKinds();
+  if (st.handsPlayed == null) st.handsPlayed = 0;
+  KIND_RATE_DEFS.forEach((d) => {
+    if (st.kinds[d.kind] == null) st.kinds[d.kind] = 0;
+  });
+  return st;
+}
+
+function seatedIdsFrom(game, row) {
+  const raw = row && Array.isArray(row.seats) ? row.seats : game.seats;
+  return [...new Set((raw || []).filter(Boolean))];
+}
+
+function recordSeatedHands(game, seats) {
+  seatedIdsFrom(game, { seats: seats || game.seats }).forEach((id) => {
+    ensurePlayerStat(game, id).handsPlayed += 1;
+  });
 }
 
 function recordLian(game, dealerId, consecutiveBefore, dealerStays) {
@@ -35,35 +70,76 @@ function addSpecialDi(game, id, delta) {
   st.specialDi = Math.round((st.specialDi + delta) * 100) / 100;
 }
 
+function specialSubjectId(row) {
+  if (!row) return null;
+  if (row.subjectId) return row.subjectId;
+  const pays = row.payments || [];
+  const winners = [
+    ...new Set(pays.map((p) => p.winnerId || row.winnerId).filter(Boolean)),
+  ];
+  const losers = [...new Set(pays.map((p) => p.loserId).filter(Boolean))];
+  if (row.receive === true) return winners[0] || row.winnerId || null;
+  if (row.receive === false) return losers[0] || null;
+  if (row.kind === "追三/四" || row.kind === "123順子") return losers[0] || null;
+  if (row.kind === "圍骰" || row.kind === "暗槓" || row.kind === "花草") {
+    return winners[0] || row.winnerId || null;
+  }
+  if (losers.length === 1 && winners.length !== 1) return losers[0];
+  if (winners.length === 1) return winners[0];
+  return row.winnerId || null;
+}
+
+function bumpKind(game, id, kind) {
+  if (!id || !kind || kind === "其他") return;
+  const st = ensurePlayerStat(game, id);
+  st.kinds[kind] = (st.kinds[kind] || 0) + 1;
+}
+
 function recordSpecialStats(game, result) {
+  const seated = new Set(seatedIdsFrom(game));
   const di = Number(result.di) || 0;
   (result.payments || []).forEach((p) => {
-    addSpecialDi(game, p.winnerId, di);
-    addSpecialDi(game, p.loserId, -di);
+    if (seated.has(p.winnerId)) addSpecialDi(game, p.winnerId, di);
+    if (seated.has(p.loserId)) addSpecialDi(game, p.loserId, -di);
   });
+  if (seated.has(result.subjectId)) bumpKind(game, result.subjectId, result.kind);
 }
 
 function recomputeSpecialDi(game) {
   Object.keys(game.playerStats || {}).forEach((id) => {
-    game.playerStats[id].specialDi = 0;
+    const st = ensurePlayerStat(game, id);
+    st.specialDi = 0;
+    st.kinds = emptyKinds();
+    st.handsPlayed = 0;
   });
-  (game.log || []).forEach((row) => {
+  const rows = (game.log || []).slice().reverse();
+  rows.forEach((row) => {
+    const seated = new Set(seatedIdsFrom(game, row));
+    if (row.type === "win" || row.type === "draw") {
+      seated.forEach((id) => {
+        ensurePlayerStat(game, id).handsPlayed += 1;
+      });
+    }
     if (row.type !== "special") return;
     const di = Number(row.di != null ? row.di : row.faceFan) || 0;
     (row.payments || []).forEach((p) => {
       const winner = p.winnerId || row.winnerId;
       const loser = p.loserId;
-      addSpecialDi(game, winner, di);
-      addSpecialDi(game, loser, -di);
+      if (!row.seats || seated.has(winner)) addSpecialDi(game, winner, di);
+      if (!row.seats || seated.has(loser)) addSpecialDi(game, loser, -di);
     });
+    const subject = specialSubjectId(row);
+    if (subject && (!row.seats || seated.has(subject))) bumpKind(game, subject, row.kind);
   });
 }
 
 function recordWinStats(game, result) {
+  recordSeatedHands(game, game.seats);
+  const seated = new Set(seatedIdsFrom(game));
   const winnerIds = [...new Set((result.payments || []).map((p) => p.winnerId))];
   const seenFan = new Set();
   (result.payments || []).forEach((p) => {
-    if (seenFan.has(p.winnerId)) return;
+    if (!seated.has(p.winnerId) || seenFan.has(p.winnerId)) return;
     seenFan.add(p.winnerId);
     const st = ensurePlayerStat(game, p.winnerId);
     const face = Number(p.breakdown && p.breakdown.faceFan) || 0;
@@ -71,13 +147,14 @@ function recordWinStats(game, result) {
     st.fanHands += 1;
   });
   winnerIds.forEach((id) => {
+    if (!seated.has(id)) return;
     const st = ensurePlayerStat(game, id);
     if (result.isZimo) st.zimo += 1;
     else st.hu += 1;
   });
   if (!result.isZimo) {
     const discarderId = result.payments[0] && result.payments[0].loserId;
-    if (discarderId) ensurePlayerStat(game, discarderId).chong += 1;
+    if (discarderId && seated.has(discarderId)) ensurePlayerStat(game, discarderId).chong += 1;
   }
 }
 
@@ -85,6 +162,17 @@ function formatStatDi(n) {
   const v = Math.round((Number(n) || 0) * 100) / 100;
   if (Math.abs(v - Math.round(v)) < 1e-9) return String(Math.round(v));
   return String(v);
+}
+
+function formatPct(n) {
+  const v = Number(n) || 0;
+  if (Math.abs(v - Math.round(v)) < 0.05) return `${Math.round(v)}%`;
+  return `${v.toFixed(1)}%`;
+}
+
+function pct(n, d) {
+  if (!d) return 0;
+  return (Number(n) / d) * 100;
 }
 
 function playerStatRows(game) {
@@ -107,15 +195,50 @@ function playerStatRows(game) {
   });
   return ordered.map((p) => {
     const st = (game.playerStats && game.playerStats[p.id]) || emptyPlayerStat();
+    const kinds = st.kinds || emptyKinds();
     const wins = st.hu + st.zimo;
+    const denom = st.handsPlayed || 0;
     return {
       player: p,
       seated: seatedSet.has(p.id),
       ...st,
+      kinds,
+      handsPlayed: denom,
       wins,
       avgFan: st.fanHands ? st.fanSum / st.fanHands : null,
+      huRate: pct(st.hu, denom),
+      zimoRate: pct(st.zimo, denom),
+      chongRate: pct(st.chong, denom),
+      kindRates: KIND_RATE_DEFS.map((d) => ({
+        kind: d.kind,
+        label: d.label,
+        count: kinds[d.kind] || 0,
+        rate: pct(kinds[d.kind] || 0, denom),
+      })),
     };
   });
+}
+
+function radarScores(row) {
+  const n = Number(row.handsPlayed) || 0;
+  if (!n) {
+    return { attack: 0.03, defense: 0.03, power: 0.03, luck: 0.03 };
+  }
+  const kinds = row.kinds || {};
+  const good =
+    (kinds["圍骰"] || 0) + (kinds["花草"] || 0) + (kinds["暗槓"] || 0);
+  const bad = (kinds["追三/四"] || 0) + (kinds["123順子"] || 0);
+  const di = Number(row.specialDi) || 0;
+  const luck =
+    good || bad || di
+      ? Math.min(1, Math.max(0, 0.35 + (good - bad) / n + di * 0.02))
+      : 0.04;
+  return {
+    attack: Math.min(1, (row.hu + row.zimo) / n),
+    defense: Math.min(1, Math.max(0, 1 - (row.chong || 0) / n)),
+    power: Math.min(1, (row.avgFan || 0) / 100),
+    luck,
+  };
 }
 
 function maxIds(rows, key, minValue) {
@@ -214,10 +337,14 @@ const Stats = {
   recordWindProgress,
   recordSpecialStats,
   recomputeSpecialDi,
+  recordSeatedHands,
   recordWinStats,
   formatStatDi,
+  formatPct,
+  radarScores,
   buildStatsView,
   TITLE_ORDER,
+  KIND_RATE_DEFS,
 };
 
 if (typeof window !== "undefined") window.Stats = Stats;

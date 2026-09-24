@@ -220,7 +220,7 @@ function laText(playerId) {
       const w = State.player(r.winnerId);
       return `被${esc(w?.name || "?")}拉${r.count}口`;
     })
-    .join(" · ");
+    .join("<br>");
 }
 
 function renderTable() {
@@ -237,7 +237,7 @@ function renderTable() {
         ? `<span class="label">莊</span>${n ? `<span class="label">連${n}</span>` : ""}`
         : ""
     }</div>
-      <div class="name">${p ? esc(p.name) : "空位"} · ${WIND[seat]}</div>
+      <div class="name">${p ? esc(p.name) : "空位"}</div>
       <div class="score">${p ? formatMoney(p.score) : "-"}</div>
       <div class="meta">${p ? laText(p.id) : ""}</div>`;
   });

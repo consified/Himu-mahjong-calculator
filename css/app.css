@@ -373,6 +373,7 @@ select {
   max-height: calc(100dvh - 22rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   margin: 4px 0 8px;
   padding: 8px 6px;
+  overflow: hidden;
   background: radial-gradient(circle, var(--felt) 0%, var(--felt-2) 70%);
   border: 5px solid #6b5424;
   border-radius: 20px;
@@ -382,11 +383,13 @@ select {
 .seat {
   position: relative;
   width: 100%;
-  max-width: 118px;
+  max-width: 132px;
+  min-width: 0;
+  overflow: hidden;
   background: rgba(10, 22, 16, 0.88);
   border: 1px solid var(--line);
   border-radius: 14px;
-  padding: 6px 4px;
+  padding: 6px 6px 5px;
   text-align: center;
   color: inherit;
   appearance: none;
@@ -445,6 +448,9 @@ select {
   font-size: 0.78rem;
   margin-top: 4px;
   line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .seat .score {
@@ -453,9 +459,15 @@ select {
 }
 
 .seat .meta {
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   color: var(--muted);
-  min-height: 0.8em;
+  line-height: 1.25;
+  margin-top: 2px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .table-center {
